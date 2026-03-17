@@ -1,7 +1,7 @@
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from apscheduler.schedulers.asyncio import AsyncioScheduler
+from apscheduler.asyncio import AsyncioScheduler
 import dateparser
 import re
 from datetime import datetime
