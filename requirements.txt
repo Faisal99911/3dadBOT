@@ -1,4 +1,5 @@
- pyrogram
-tgcrypto 
+pyrogram
+tgcrypto
 apscheduler==3.10.1
 dateparser
+setuptools
