@@ -99,17 +99,17 @@ async def handle_responses(client, message):
         state["caption"] = message.caption
         state["action"] = "set_interval"
         await message.reply("تمام، أرسل الآن وقت التكرار (مثلاً: كل يوم)")
-elif state["action"] == "set_interval":
-        interval = parse_interval(message.text)
-        scheduler.add_job(
+        elif state["action"] == "set_interval":
+            interval = parse_interval(message.text)
+            scheduler.add_job(
             send_scheduled_msg, "interval", 
             args=[message.chat.id, state["type"], state["content"], state.get("caption"), state.get("target_date")],
             **interval
-        )
-        await message.reply(f"🚀 تم تفعيل الجدولة بنجاح!")
-        del user_states[uid]
+            )
+            await message.reply(f"🚀 تم تفعيل الجدولة بنجاح!")
+            del user_states[uid]
 
 # تشغيل البوت
-if name == "main":
+if __name__ == "__main__":
     scheduler.start()
     app.run()
