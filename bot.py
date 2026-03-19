@@ -10,7 +10,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 API_ID = 34257542
 API_HASH = "614a1b5c5b712ac6de5530d5c571c42a"
-BOT_TOKEN = "YOUR_TOKEN"
+BOT_TOKEN = "8543191006:AAFGAWKQa23bt26qYJ86MkvrjYXz_5d2gAA"
 ADMIN_ID = 1486879970
 
 app = Client("pro_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
