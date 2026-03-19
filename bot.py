@@ -1,77 +1,30 @@
-import asyncio
-import re
+Import re
 from datetime import datetime
-
 import dateparser
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-# --- الإعدادات ---
 API_ID = 34257542
 API_HASH = "614a1b5c5b712ac6de5530d5c571c42a"
-BOT_TOKEN = "8543191006:AAFGAWKQa23bt26qYJ86MkvrjYXz_5d2gAA"
+BOT_TOKEN = "YOUR_TOKEN"
 ADMIN_ID = 1486879970
 
-app = Client("FaisalBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("pro_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 scheduler = AsyncIOScheduler()
 
-# مخزن مؤقت لحفظ الحالات
 user_states = {}
+tasks = {}
+task_counter = 0
 
 
-# --- وظائف مساعدة ---
-
-
-def get_countdown_markup(target_date):
-    now = datetime.now()
-    diff = target_date - now
-    if diff.total_seconds() <= 0:
-        return None
-
-    days = diff.days
-    weeks = days // 7
-    hours = int(diff.total_seconds() // 3600)
-
-    if days < 1:
-        minutes = int((diff.total_seconds() % 3600) // 60)
-        seconds = int(diff.total_seconds() % 60)
-        btns = [
-            [
-                InlineKeyboardButton(f"{hours} ساعة", callback_data="n"),
-                InlineKeyboardButton(f"{minutes} دقيقة", callback_data="n"),
-                InlineKeyboardButton(f"{seconds} ثانية", callback_data="n"),
-            ]
-        ]
-    else:
-        btns = [
-            [
-                InlineKeyboardButton(f"{days} يوم", callback_data="n"),
-                InlineKeyboardButton(f"{weeks} أسبوع", callback_data="n"),
-            ],
-            [InlineKeyboardButton(f"{hours} ساعة", callback_data="n")],
-        ]
-    return InlineKeyboardMarkup(btns)
-
-
-async def send_scheduled_msg(chat_id, msg_type, content, caption=None, target_date=None):
-    try:
-        if msg_type == "text":
-            await app.send_message(chat_id, content)
-        elif msg_type == "photo":
-            await app.send_photo(chat_id, content, caption=caption)
-        elif msg_type == "video":
-            await app.send_video(chat_id, content, caption=caption)
-        elif msg_type == "counter":
-            markup = get_countdown_markup(target_date)
-            await app.send_message(chat_id, f"⏳ {content}", reply_markup=markup)
-    except Exception as e:
-        print(f"Error: {e}")
-
+# ----------------- أدوات ----------------- #
 
 def parse_interval(text):
     nums = re.findall(r"\d+", text)
     val = int(nums[0]) if nums else 1
+
     if "دقيق" in text:
         return {"minutes": val}
     if "ساع" in text:
@@ -81,76 +34,190 @@ def parse_interval(text):
     return {"days": 1}
 
 
-# --- معالجة الأوامر ---
+def parse_time(text):
+    return dateparser.parse(text, settings={"PREFER_DATES_FROM": "future"})
+
+
+def countdown_markup(target):
+    diff = target - datetime.now()
+    if diff.total_seconds() <= 0:
+        return None
+
+    days = diff.days
+    hours = int(diff.total_seconds() // 3600)
+    minutes = int((diff.total_seconds() % 3600) // 60)
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"{days} يوم", "n"),
+         InlineKeyboardButton(f"{hours} ساعة", "n"),
+         InlineKeyboardButton(f"{minutes} دقيقة", "n")]
+    ])
+
+
+async def send_job(client, chat_id, task_id):
+    task = tasks.get(task_id)
+    if not task or not task["active"]:
+        return
+
+    try:
+        if task["type"] == "text":
+            await client.send_message(chat_id, task["content"])
+
+        elif task["type"] == "photo":
+            await client.send_photo(chat_id, task["content"], caption=task.get("caption"))
+
+        elif task["type"] == "video":
+            await client.send_video(chat_id, task["content"], caption=task.get("caption"))
+
+        elif task["type"] == "counter":
+            markup = countdown_markup(task["target"])
+            await client.send_message(chat_id, f"⏳ {task['content']}", reply_markup=markup)
+
+    except Exception as e:
+        print(e)
+
+
+# ----------------- أوامر ----------------- #
 
 is_admin = filters.user(ADMIN_ID)
 
 
-@app.on_message(is_admin & filters.regex(r"عداد \((.*)\) \((.*)\)"))
-async def counter_cmd(client, message):
-    text, time_str = message.matches[0].group(1), message.matches[0].group(2)
-    target_date = dateparser.parse(time_str, settings={"PREFER_DATES_FROM": "future"})
+@app.on_message(is_admin & filters.regex(r"(نص|صورة|فيديو) تلقائي"))
+async def auto_start(client, message):
+    mapping = {"نص": "text", "صورة": "photo", "فيديو": "video"}
+    user_states[message.from_user.id] = {
+        "action": "content",
+        "type": mapping[message.matches[0].group(1)]
+    }
+    await message.reply("أرسل المحتوى")
 
-    if not target_date:
-        return await message.reply("❌ لم أفهم الوقت.")
+
+@app.on_message(is_admin & filters.regex(r"عداد \((.*)\) \((.*)\)"))
+async def counter_start(client, message):
+    text, time_str = message.matches[0].group(1), message.matches[0].group(2)
+    target = parse_time(time_str)
+
+    if not target:
+        return await message.reply("❌ وقت غير مفهوم")
 
     user_states[message.from_user.id] = {
-        "action": "set_interval",
+        "action": "interval",
         "type": "counter",
         "content": text,
-        "target_date": target_date,
+        "target": target
     }
-    await message.reply(
-        f"✅ تم تحديد الهدف: {target_date}\nأرسل الآن التكرار (مثلاً: كل ساعة أو كل 5 دقائق)"
-    )
 
-
-@app.on_message(is_admin & filters.regex(r"(فيديو|صورة|نص) تلقائي"))
-async def auto_send_cmd(client, message):
-    m_type = message.matches[0].group(1)
-    type_map = {"فيديو": "video", "صورة": "photo", "نص": "text"}
-    user_states[message.from_user.id] = {
-        "action": "wait_content",
-        "type": type_map[m_type],
-    }
-    await message.reply(f"حسناً، أرسل {m_type} الآن.")
+    await message.reply("حدد التكرار")
 
 
 @app.on_message(is_admin)
-async def handle_responses(client, message):
+async def flow(client, message):
+    global task_counter
+
     uid = message.from_user.id
     if uid not in user_states:
         return
+
     state = user_states[uid]
 
-    if state["action"] == "wait_content":
-        state["content"] = (
-            message.video.file_id
-            if state["type"] == "video"
-            else (message.photo.file_id if state["type"] == "photo" else message.text)
-        )
+    # استقبال المحتوى
+    if state["action"] == "content":
+        if state["type"] == "photo":
+            state["content"] = message.photo.file_id
+        elif state["type"] == "video":
+            state["content"] = message.video.file_id
+        else:
+            state["content"] = message.text
+
         state["caption"] = message.caption
-        state["action"] = "set_interval"
-        await message.reply("تمام، أرسل الآن وقت التكرار (مثلاً: كل يوم)")
-    elif state["action"] == "set_interval":
+        state["action"] = "interval"
+
+        return await message.reply("حدد التكرار")
+
+    # تحديد التكرار وإنشاء المهمة
+    elif state["action"] == "interval":
         interval = parse_interval(message.text)
+
+        task_counter += 1
+        task_id = task_counter
+
+        tasks[task_id] = {
+            "type": state["type"],
+            "content": state["content"],
+            "caption": state.get("caption"),
+            "target": state.get("target"),
+            "interval": interval,
+            "active": True
+        }
+
         scheduler.add_job(
-            send_scheduled_msg,
+            send_job,
             "interval",
-            args=[
-                message.chat.id,
-                state["type"],
-                state["content"],
-                state.get("caption"),
-                state.get("target_date"),
-            ],
-            **interval,
+            args=[client, message.chat.id, task_id],
+            id=str(task_id),
+            **interval
         )
-        await message.reply(f"🚀 تم تفعيل الجدولة بنجاح!")
+
+        await message.reply(f"✅ تم إنشاء المهمة #{task_id}")
         del user_states[uid]
 
 
-# تشغيل البوت
+# ----------------- إدارة المهام ----------------- #
+
+@app.on_message(is_admin & filters.command("tasks"))
+async def list_tasks(client, message):
+    if not tasks:
+        return await message.reply("لا توجد مهام")
+
+    text = "📋 المهام:\n\n"
+    for tid, t in tasks.items():
+        status = "✅" if t["active"] else "⛔"
+        text += f"{tid} - {t['type']} ({status})\n"
+
+    await message.reply(text)
+
+
+@app.on_message(is_admin & filters.command("delete"))
+async def delete_task(client, message):
+    try:
+        tid = int(message.command[1])
+    except:
+        return await message.reply("اكتب ID صحيح")
+
+    if tid not in tasks:
+        return await message.reply("المهمة غير موجودة")
+
+    scheduler.remove_job(str(tid))
+    del tasks[tid]
+
+    await message.reply(f"🗑️ تم حذف المهمة {tid}")
+
+
+@app.on_message(is_admin & filters.command("stop"))
+async def stop_task(client, message):
+    tid = int(message.command[1])
+    if tid in tasks:
+        tasks[tid]["active"] = False
+        await message.reply("تم الإيقاف ⛔")
+
+
+@app.on_message(is_admin & filters.command("start"))
+async def start_task(client, message):
+    tid = int(message.command[1])
+    if tid in tasks:
+        tasks[tid]["active"] = True
+        await message.reply("تم التشغيل ✅")
+
+
+@app.on_message(is_admin & filters.command("clear"))
+async def clear_tasks(client, message):
+    scheduler.remove_all_jobs()
+    tasks.clear()
+    await message.reply("تم حذف كل المهام 🧹")
+
+
+# ----------------- تشغيل ----------------- #
+
 if __name__ == "__main__":
     scheduler.start()
     app.run()
