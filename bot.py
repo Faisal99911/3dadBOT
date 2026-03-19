@@ -1,10 +1,12 @@
-import re
+Import re
 from datetime import datetime
-import dateparser
 
+import dateparser
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+# ----------------- الإعدادات ----------------- #
 
 API_ID = 34257542
 API_HASH = "614a1b5c5b712ac6de5530d5c571c42a"
@@ -20,6 +22,7 @@ task_counter = 0
 
 
 # ----------------- أدوات ----------------- #
+
 
 def parse_interval(text):
     nums = re.findall(r"\d+", text)
@@ -47,11 +50,15 @@ def countdown_markup(target):
     hours = int(diff.total_seconds() // 3600)
     minutes = int((diff.total_seconds() % 3600) // 60)
 
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"{days} يوم", "n"),
-         InlineKeyboardButton(f"{hours} ساعة", "n"),
-         InlineKeyboardButton(f"{minutes} دقيقة", "n")]
-    ])
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(f"{days} يوم", "n"),
+                InlineKeyboardButton(f"{hours} ساعة", "n"),
+                InlineKeyboardButton(f"{minutes} دقيقة", "n"),
+            ]
+        ]
+    )
 
 
 async def send_job(client, chat_id, task_id):
@@ -64,14 +71,20 @@ async def send_job(client, chat_id, task_id):
             await client.send_message(chat_id, task["content"])
 
         elif task["type"] == "photo":
-            await client.send_photo(chat_id, task["content"], caption=task.get("caption"))
+            await client.send_photo(
+                chat_id, task["content"], caption=task.get("caption")
+            )
 
         elif task["type"] == "video":
-            await client.send_video(chat_id, task["content"], caption=task.get("caption"))
+            await client.send_video(
+                chat_id, task["content"], caption=task.get("caption")
+            )
 
         elif task["type"] == "counter":
             markup = countdown_markup(task["target"])
-            await client.send_message(chat_id, f"⏳ {task['content']}", reply_markup=markup)
+            await client.send_message(
+                chat_id, f"⏳ {task['content']}", reply_markup=markup
+            )
 
     except Exception as e:
         print(e)
@@ -87,7 +100,7 @@ async def auto_start(client, message):
     mapping = {"نص": "text", "صورة": "photo", "فيديو": "video"}
     user_states[message.from_user.id] = {
         "action": "content",
-        "type": mapping[message.matches[0].group(1)]
+        "type": mapping[message.matches[0].group(1)],
     }
     await message.reply("أرسل المحتوى")
 
@@ -104,7 +117,7 @@ async def counter_start(client, message):
         "action": "interval",
         "type": "counter",
         "content": text,
-        "target": target
+        "target": target,
     }
 
     await message.reply("حدد التكرار")
@@ -147,7 +160,7 @@ async def flow(client, message):
             "caption": state.get("caption"),
             "target": state.get("target"),
             "interval": interval,
-            "active": True
+            "active": True,
         }
 
         scheduler.add_job(
@@ -155,7 +168,7 @@ async def flow(client, message):
             "interval",
             args=[client, message.chat.id, task_id],
             id=str(task_id),
-            **interval
+            **interval,
         )
 
         await message.reply(f"✅ تم إنشاء المهمة #{task_id}")
@@ -163,6 +176,7 @@ async def flow(client, message):
 
 
 # ----------------- إدارة المهام ----------------- #
+
 
 @app.on_message(is_admin & filters.command("tasks"))
 async def list_tasks(client, message):
@@ -195,18 +209,24 @@ async def delete_task(client, message):
 
 @app.on_message(is_admin & filters.command("stop"))
 async def stop_task(client, message):
-    tid = int(message.command[1])
-    if tid in tasks:
-        tasks[tid]["active"] = False
-        await message.reply("تم الإيقاف ⛔")
+    try:
+        tid = int(message.command[1])
+        if tid in tasks:
+            tasks[tid]["active"] = False
+            await message.reply("تم الإيقاف ⛔")
+    except:
+        await message.reply("يرجى كتابة رقم المهمة")
 
 
 @app.on_message(is_admin & filters.command("start"))
 async def start_task(client, message):
-    tid = int(message.command[1])
-    if tid in tasks:
-        tasks[tid]["active"] = True
-        await message.reply("تم التشغيل ✅")
+    try:
+        tid = int(message.command[1])
+        if tid in tasks:
+            tasks[tid]["active"] = True
+            await message.reply("تم التشغيل ✅")
+    except:
+        await message.reply("يرجى كتابة رقم المهمة")
 
 
 @app.on_message(is_admin & filters.command("clear"))
